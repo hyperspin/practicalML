@@ -1,0 +1,226 @@
+---
+title: "projectML"
+author: "vk"
+date: "8/29/2021"
+output: html_document
+---
+```{r setoptions, echo= FALSE}
+knitr::opts_chunk$set(echo= FALSE, cache = TRUE)
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+
+## Project Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+Data 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+Peer Review Portion
+
+Your submission for the Peer Review portion should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+
+
+---
+```{r}
+library(caret)
+library(ggplot2)
+
+```
+```{r}
+
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+setwd("/Users/kumarnv/Rprojects/ML")
+trainFile <- "./data/pml-training.csv"
+testFile  <- "./data/pml-testing.csv"
+
+if (!file.exists("./data")) {
+  dir.create("./data")
+}
+if (!file.exists(trainFile)) {
+  download.file(trainUrl, destfile = trainFile, method = "curl")
+}
+if (!file.exists(testFile)) {
+  download.file(testUrl, destfile = testFile, method = "curl")
+}
+
+```
+
+### Read the Data
+- Download data
+- read it into two data sets, training and testing
+- excluded columns containg the strings "NA" and "#DIV/0!"  
+
+```{r, cache = T}
+setwd("/Users/kumarnv/Rprojects/ML")
+trainFile <- "./data/pml-training.csv"
+testFile  <- "./data/pml-testing.csv"
+
+
+training <- read.csv(trainFile, na.strings = c("NA", "#DIV/0!"), row.names = 1)
+testing <- read.csv(testFile, na.strings = c("NA", "#DIV/0!"), row.names = 1)
+setwd("/Users/kumarnv/Rprojects/ML")
+#dim(training) #19622, 159
+#dim(testing) # 20, 159
+#colnames(training)== colnames(testing)
+# last column name is different in test vs train data
+#testing$problem_id
+#1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20
+#sum(is.na(training))
+#[1] 637630
+```
+## Data Cleaning
+- Deleted columns containing NA from training and testing data frames.
+
+```{r}
+# delete the first six columns from training and testing data
+training <- training[, -(1:6)]
+testing <- testing[, -(1:6)]
+# remove columns with NA
+training <- training[,colSums(is.na(training)) == 0]
+testing <- testing[, colSums(is.na(testing)) == 0 ]
+#dim(training)
+# 19622    53
+
+```
+## random forest model
+
+```{r}
+set.seed(2021) # For reproducibile purpose
+inTrain <- createDataPartition(y = factor(training$classe), p = 0.70, list = FALSE)
+trainingData <- training[inTrain, ]
+testingData <- training[-inTrain, ]
+```
+```{r}
+controlRf <- trainControl(method = "cv", 5)
+modelRf <- train(classe ~ ., data = trainingData, method = "rf", trControl = controlRf, ntree = 200)
+modelRf
+```
+- Predict classe outcome of the data set testing.
+```{r}
+predictRf <- predict(modelRf, testingData)
+confusionMatrix(factor(testingData$classe), predictRf)
+```
+- Accuracy of the random forest model is 0.9932 on the cleaned test data.
+
+## Combining gbm and rf methods.
+
+-Build training, validation and testing data sets 
+
+```{r}
+# use cleaned trainingData
+inBuild <- createDataPartition(y = factor(trainingData$classe), p = 0.7, list = FALSE)
+buildData <- trainingData[inBuild,] 
+validation <- trainingData[-inBuild, ]
+
+
+inTrain <- createDataPartition(y = factor(buildData$classe), p = 0.7, list = FALSE)
+trainingSet2 <- buildData[inTrain, ]
+testingSet2 <- buildData[-inTrain, ]
+
+```
+```{r}
+#dim(trainingSet2)
+```
+```{r}
+#dim(testingSet2)
+```
+```{r}
+# dim(validation)
+```
+- Build two models model1 and model2 for gbm and rf methods respectively.
+```{r echo=FALSE}
+# Build 2 models
+
+model1 <- train(classe ~ ., method = "gbm", data = trainingSet2, verbose = FALSE )
+controlRf <- trainControl(method = "cv", number = 5, verboseIter = FALSE)
+model2 <- train(classe ~ ., data = trainingSet2, method = "rf", trControl = controlRf, ntree = 200)
+#model2
+```
+# Predict the outcome on testing and training sets.
+```{r}
+# Predict on testing2
+pred1 <- predict(model1, testingSet2)
+pred2 <- predict(model2, testingSet2)
+qplot(pred1, pred2, color = classe, data = testingSet2)
+```
+- combine the two predictors from the two models
+
+```{r}
+# combined predictors
+predictDF <- data.frame(pred1, pred2, classe = testingSet2$classe)
+combModelFit <- train(classe ~., method = "gam", data = predictDF, verboseIter = FALSE)
+combPredict <- predict(combModelFit, predictDF)
+```
+```{r}
+sqrt(sum(pred1 != testingSet2$classe)^2)
+```
+```{r}
+sqrt(sum(pred2 != testingSet2$classe)^2)
+```
+```{r}
+sqrt(sum(combPredict !=testingSet2$classe)^2)
+```
+- judging from the errors of the predictions on testing data, random forest farest better than the combination of    gbm and rf methods.
+
+## Predict on Validation
+```{r}
+pred1V <- predict(model1, validation)
+pred2V <- predict(model2, validation)
+predVDF <- data.frame(pred1=pred1V, pred2=pred2V)
+combPredV <- predict(combModelFit, predVDF)
+
+```
+## Evaluate on validation set
+```{r}
+# gbm model
+sqrt(sum(pred1V != validation$classe)^2)
+```
+```{r}
+# Random forest model
+sqrt(sum(pred2V != validation$classe)^2)
+```
+```{r}
+# combined model
+sqrt(sum(combPredV != validation$classe)^2)
+```
+```{r}
+confusionMatrix(factor(validation$classe), pred1V)
+```
+```{r}
+confusionMatrix(factor(validation$classe), pred2V)
+```
+```{r}
+confusionMatrix(factor(validation$classe), combPredV)
+```
+- similar to errors, confusion matrix also shows that combining the gbm and rf methods didn't improve prediction on validation data.
+
+## Prediction of the outcome on testing data using random forest model.
+
+```{r}
+predicts <- predict(modelRf, testing)
+predicts
+```
+
+## Conclusion
+
+
+- random forest appears to be a better model than the combination of gbm and rf in this dataset.
